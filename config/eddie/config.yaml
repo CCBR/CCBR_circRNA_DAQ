@@ -1,0 +1,26 @@
+cluster: qsub
+  -cwd
+  -l h_rt={cluster.time}
+  -l h_vmem={cluster.mem}
+  -pe sharedmem {cluster.threads}
+  -N {cluster.name}
+  -o {cluster.output}
+  -e {cluster.error}
+cluster-config: "cluster.yaml"
+cluster-status: "sge-status.py"
+cluster-cancel: "sge-cancel.py"
+cluster-cancel-nargs: 20
+max-jobs-per-second: 1
+max-status-checks-per-second: 1
+latency-wait: 60
+local-cores: 1
+jobs: 499
+immediate-submit: false
+verbose: true
+notemp: true
+printshellcmds: true
+use-singularity: true
+rerun-incomplete: true
+rerun-triggers: mtime
+retries: 2
+keep-going: true

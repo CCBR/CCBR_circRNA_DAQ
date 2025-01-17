@@ -5,12 +5,7 @@
 # CHARLIE
 
 set -eo pipefail
-## TODO module statements can only run on biowulf
 
-# decide trigger
-trigger="mtime"
-# trigger="input"
-# trigger="code"
 
 ##########################################################################################
 # functions
@@ -36,58 +31,16 @@ function get_platform() {
 ##########################################################################################
 # initial setup
 ##########################################################################################
-
+# set defaults for global variables
 # set PIPELINE_HOME
 PIPELINE_HOME=$(readlink -f $(dirname "$0"))
 
-# set snakefile
-SNAKEFILE="${PIPELINE_HOME}/workflow/Snakefile"
 
 # get github commit tag
 GIT_COMMIT_TAG=$(get_git_commitid_tag $PIPELINE_HOME)
 
-##########################################################################################
-# Some more set up
-##########################################################################################
-
 PYTHONVERSION="3"
 SNAKEMAKEVERSION="7"
-CONDA_ACTIVATE=''
-PATH_PREPEND=''
-MODULE_LOAD=''
-PLATFORM=$(get_platform)
-PARTITION='norm'
-EXTRA_SINGULARITY_BINDS=""
-TEMP_DIR=""
-REFS_DIR=""
-CLUSTER_PROFILE="config/unknown"
-if [ "$PLATFORM" == "biowulf" ]; then
-  CLUSTER_PROFILE="config/slurm-biowulf"
-  PARTITION="ccr,$PARTITION"
-  EXTRA_SINGULARITY_BINDS="/lscratch"
-  CONDA_ACTIVATE='. "/data/CCBR_Pipeliner/db/PipeDB/Conda/etc/profile.d/conda.sh" && conda activate py311'
-  MODULE_LOAD="module load python/$PYTHONVERSION snakemake/$SNAKEMAKEVERSION singularity; $CONDA_ACTIVATE"
-  TEMP_DIR='/lscratch/$SLURM_JOB_ID/'
-  REFS_DIR="/gpfs/gsfs10/users/CCBR_Pipeliner/db/PipeDB/charlie/fastas_gtfs/"
-elif [ "$PLATFORM" == "fnlcr" ]; then
-  CLUSTER_PROFILE="config/slurm-fnlcr"
-  EXTRA_SINGULARITY_BINDS="/scratch/local"
-  CONDA_ACTIVATE=". '/mnt/projects/CCBR-Pipelines/resources/miniconda3/etc/profile.d/conda.sh' && conda activate py311"
-  # make sure spooker is in the path
-  PATH_PREPEND='export PATH="/mnt/projects/CCBR-Pipelines/bin:$PATH"'
-  MODULE_LOAD="module load singularity; $PATH_PREPEND; $CONDA_ACTIVATE"
-  TEMP_DIR="/scratch/local/"
-  REFS_DIR="/mnt/projects/CCBR-Pipelines/db/charlie/fastas_gtfs/"
-else
-  echo """WARNING: detected platform is $PLATFORM. Please edit the files in config/unknown/ & config.yaml for compatibility with your computing environment
-    """
-fi
-
-# set defaults
-HOST="hg38"
-ADDITIVES="ERCC"
-VIRUSES="NC_009333.1"
-MANIFEST="${PIPELINE_HOME}/config/samples.tsv"
 
 # set variables
 SCRIPTNAME="$0"
@@ -156,14 +109,16 @@ Required Arguments:
 2.  RUNMODE     : [Type: String] Valid options:
     * init      : initialize workdir
     * dryrun    : dry run snakemake to generate DAG
-    * run       : run with slurm
-    * runlocal  : run without submitting to sbatch
+    * run       : run by submitting the job with slurm
+    * qsub      : run by submitting the job with qsub
+    * runlocal  : run locally without submitting the job to a scheduler
     ADVANCED RUNMODES (use with caution!!)
     * unlock    : unlock WORKDIR if locked by snakemake NEVER UNLOCK WORKDIR WHERE PIPELINE IS CURRENTLY RUNNING!
     * reconfig  : recreate config file in WORKDIR (debugging option) EDITS TO config.yaml WILL BE LOST!
     * reset     : DELETE workdir dir and re-init it (debugging option) EDITS TO ALL FILES IN WORKDIR WILL BE LOST!
     * printbinds: print singularity binds (paths)
     * local     : same as runlocal
+    * slurm     : same as run (run with slurm)
 
 Optional Arguments:
 
@@ -172,6 +127,7 @@ Optional Arguments:
 --viruses|-v    : supply comma-separated list of viruses at command line                                (--runmode=init only)
 --manifest|-s   : absolute path to samples.tsv. This will be copied to output folder                    (--runmode=init only)
 --changegrp|-z  : change group to "Ziegelbauer_lab" before running anything. Biowulf-only. Useful for correctly setting permissions.
+--platform      : set the HPC platform (biowulf, fnlcr, eddie). If not set, CHARLIE will try to detect the platform with scontrol.                    (--runmode=init only)
 --help|-h       : print this help
 
 
@@ -212,39 +168,36 @@ function err() { usage && cat <<< "
 
 function init() {
 
-# create output folder
-if [ -d $WORKDIR ];then err "Folder $WORKDIR already exists!"; fi
-mkdir -p $WORKDIR
+  # create output folder
+  if [ -d $WORKDIR ];then err "Folder $WORKDIR already exists!"; fi
+  mkdir -p $WORKDIR
 
-# copy config resources
-cp -r ${PIPELINE_HOME}/config $WORKDIR/
+  mkdir -p $SING_CACHE_DIR
 
-# copy config template and samples files
-if [ ! -f $CONFIGFILE ];then
-sed -e "s/PIPELINE_HOME/${PIPELINE_HOME//\//\\/}/g" \
-    -e "s/WORKDIR/${WORKDIR//\//\\/}/g" \
-    -e "s/HOST/${HOST}/g" \
-    -e "s/ADDITIVES/${ADDITIVES}/g" \
-    -e "s/VIRUSES/${VIRUSES}/g" \
-    -e "s/TEMP_DIR/${TEMP_DIR//\//\\/}/g" \
-    -e "s/REFS_DIR/${REFS_DIR//\//\\/}/g" \
-    -e "s|CLUSTER_PROFILE|${CLUSTER_PROFILE}|g" \
-    ${PIPELINE_HOME}/config/config.yaml \
-    > $CONFIGFILE
-fi
-if [ ! -f $WORKDIR/nclscan.config ];then
-sed -e "s/PIPELINE_HOME/${PIPELINE_HOME//\//\\/}/g" -e "s/WORKDIR/${WORKDIR//\//\\/}/g" ${PIPELINE_HOME}/resources/NCLscan.config.template > $WORKDIR/nclscan.config
-fi
+  # copy config resources
+  cp -r ${PIPELINE_HOME}/config $WORKDIR/
 
-if [ ! -f $WORKDIR/samples.tsv ];then
-cp $MANIFEST $WORKDIR/samples.tsv
-fi
+  # copy config template and samples files
+  if [ ! -f $CONFIGFILE ];then
+    cat ${PIPELINE_HOME}/config/config.yaml |\
+      envsubst '$PIPELINE_HOME $WORKDIR $HOST $ADDITIVES $VIRUSES $TEMP_DIR $REFS_DIR $CLUSTER_PROFILE' \
+      > $CONFIGFILE
+  fi
+  if [ ! -f $WORKDIR/nclscan.config ];then
+    cat ${PIPELINE_HOME}/resources/NCLscan.config.template |\
+      envsubst '$WORKDIR' |\
+      > $WORKDIR/nclscan.config
+  fi
 
-#create log and stats folders
-if [ ! -d $WORKDIR/logs ]; then mkdir -p $WORKDIR/logs;echo "Logs Dir: $WORKDIR/logs";fi
-if [ ! -d $WORKDIR/stats ];then mkdir -p $WORKDIR/stats;echo "Stats Dir: $WORKDIR/stats";fi
+  if [ ! -f $WORKDIR/samples.tsv ];then
+  cp $MANIFEST $WORKDIR/samples.tsv
+  fi
 
-echo "Done Initializing $WORKDIR. You can now edit $WORKDIR/config.yaml and $WORKDIR/samples.tsv"
+  #create log and stats folders
+  if [ ! -d $WORKDIR/logs ]; then mkdir -p $WORKDIR/logs;echo "Logs Dir: $WORKDIR/logs";fi
+  if [ ! -d $WORKDIR/stats ];then mkdir -p $WORKDIR/stats;echo "Stats Dir: $WORKDIR/stats";fi
+
+  echo "Done Initializing $WORKDIR. You can now edit $WORKDIR/config.yaml and $WORKDIR/samples.tsv"
 
 }
 
@@ -301,16 +254,9 @@ function reconfig(){
   # rebuild config file and replace the config.yaml in the WORKDIR
   # this is only for dev purposes when new key-value pairs are being added to the config file
   check_essential_files
-  sed -e "s/PIPELINE_HOME/${PIPELINE_HOME//\//\\/}/g" \
-    -e "s/WORKDIR/${WORKDIR//\//\\/}/g" \
-    -e "s/HOST/${HOST}/g" \
-    -e "s/ADDITIVES/${ADDITIVES}/g" \
-    -e "s/VIRUSES/${VIRUSES}/g" \
-    -e "s/TEMP_DIR/${TEMP_DIR//\//\\/}/g" \
-    -e "s/REFS_DIR/${REFS_DIR//\//\\/}/g" \
-    -e "s|CLUSTER_PROFILE|${CLUSTER_PROFILE}|g" \
-    ${PIPELINE_HOME}/config/config.yaml \
-    > $CONFIGFILE
+  cat ${PIPELINE_HOME}/config/config.yaml |\
+    envsubst '$PIPELINE_HOME $WORKDIR $HOST $ADDITIVES $VIRUSES $TEMP_DIR $REFS_DIR $CLUSTER_PROFILE' \
+    > $WORKDIR/config.yaml
   echo "$WORKDIR/config.yaml has been updated!"
 }
 
@@ -335,6 +281,7 @@ function load_modules() {
 function runcheck(){
   check_essential_files
   load_modules
+  set_singularity_binds
 }
 
 ##########################################################################################
@@ -374,7 +321,7 @@ function unlock() {
 
 function set_singularity_binds() {
   binds=$( $PIPELINE_HOME/workflow/scripts/set_singularity_bind_paths.py ${WORKDIR}/config.yaml ${WORKDIR}/samples.tsv)
-  SINGULARITY_BINDS="-B $EXTRA_SINGULARITY_BINDS,$binds"
+  export SINGULARITY_BINDS="-B $EXTRA_SINGULARITY_BINDS,$binds"
 }
 ##########################################################################################
 # PRINT SINGULARITY BINDS ... print bound singularity folders for debugging
@@ -391,8 +338,6 @@ function printbinds(){
 
 function runlocal() {
   runcheck
-  set_singularity_binds
-  if [ "$SLURM_JOB_ID" == "" ];then err "runlocal can only be done on an interactive node"; exit 1; fi
   run "local"
 }
 
@@ -402,8 +347,11 @@ function runlocal() {
 
 function runslurm() {
   runcheck
-  set_singularity_binds
   run "--dry-run " && run "slurm"
+}
+function runqsub() {
+  runcheck
+  run "--dry-run " && run "qsub"
 }
 
 ##########################################################################################
@@ -481,6 +429,12 @@ function run() {
 
   if [ "$1" == "local" ];then
 
+    if [ "$PLATFORM" == "biowulf" ] || [ "$PLATFORM" == "fnlcr"]; then
+      if [ "$SLURM_JOB_ID" == "" ]; then
+        err "runlocal can only be done on an interactive node";
+        exit 1;
+      fi
+    fi
     preruncleanup
 
     $EXPORT_SING_CACHE_DIR_CMD
@@ -508,50 +462,21 @@ function run() {
         --configfile $CONFIGFILE
     fi
 
-  elif [ "$1" == "slurm" ];then
+  elif [ "$1" == "slurm" ]; then
 
     preruncleanup
+    cat ${WORKDIR}/config/${PLATFORM}/submit_script.sh |\
+      envsubst '$CLUSTER_PROFILE $CONFIGFILE $EXPORT_SING_CACHE_DIR_CMD $MODULE_LOAD $PARTITION $SINGULARITY_BINDS $SNAKEFILE $trigger $WORKDIR' \
+      > ${WORKDIR}/submit_script.sh
+    sbatch ${WORKDIR}/submit_script.sh
 
-    cat > ${WORKDIR}/submit_script.sbatch << EOF
-#!/bin/bash
-#SBATCH --job-name="charlie"
-#SBATCH --mem=40g
-#SBATCH --partition="$PARTITION"
-#SBATCH --time=48:00:00
-#SBATCH --cpus-per-task=2
-#SBATCH --mail-type=BEGIN,END,FAIL
+  elif [ "$1" == "qsub" ]; then
 
-cd \$SLURM_SUBMIT_DIR
-$MODULE_LOAD
-$EXPORT_SING_CACHE_DIR_CMD
-
-snakemake -s $SNAKEFILE \
-    --directory $WORKDIR \
-    --use-singularity \
-    --singularity-args "$SINGULARITY_BINDS" \
-    --use-envmodules \
-    --printshellcmds \
-    --latency-wait 300 \
-    --configfile $CONFIGFILE \
-    --profile $CLUSTER_PROFILE \
-    -j 500 \
-    --rerun-incomplete \
-    --rerun-triggers $trigger \
-    --retries 2 \
-    --keep-going \
-    --stats ${WORKDIR}/snakemake.stats \
-    2>&1 | tee ${WORKDIR}/snakemake.log
-
-if [ "\$?" -eq "0" ];then
-  snakemake -s $SNAKEFILE \
-  --directory $WORKDIR \
-  --report ${WORKDIR}/runslurm_snakemake_report.html \
-  --configfile $CONFIGFILE
-fi
-
-EOF
-
-    sbatch ${WORKDIR}/submit_script.sbatch
+    preruncleanup
+    cat ${WORKDIR}/config/${PLATFORM}/submit_script.sh |\
+      envsubst '$CLUSTER_PROFILE $CONFIGFILE $EXPORT_SING_CACHE_DIR_CMD $MODULE_LOAD $PARTITION $SINGULARITY_BINDS $SNAKEFILE $trigger $WORKDIR' \
+      > ${WORKDIR}/run_script.sh
+    pushd $WORKDIR && bash run_script.sh && popd
 
   elif [ "$1" == "--touch" ];then
 
@@ -636,6 +561,9 @@ function main(){
         MANIFEST="${i#*=}"
         if [ ! -f $MANIFEST ];then err "File $MANIFEST does NOT exist!";fi
       ;;
+      -p=*|--platform=*)
+        PLATFORM="${i#*=}"
+      ;;
       -h|--help)
         usage && exit 0;
       ;;
@@ -645,8 +573,22 @@ function main(){
   esac
   done
 
-  WORKDIR=$(readlink -f $WORKDIR)
+  export WORKDIR=$(readlink -f $WORKDIR)
+  export PIPELINE_HOME=$(readlink -f $(dirname "$0"))
+  export SNAKEFILE="${PIPELINE_HOME}/workflow/Snakefile"
   echo "Working Dir: $WORKDIR"
+  if [ -z "$PLATFORM" ]; then PLATFORM=$(get_platform); fi
+  export PLATFORM
+  echo "Platform: $PLATFORM"
+
+  # set defaults
+  if [ -z "$HOST" ]; then HOST="hg38"; fi
+  export HOST
+  if [ -z "$ADDITIVES" ]; then ADDITIVES="ERCC"; fi
+  export ADDITIVES
+  if [ -z "$VIRUSES" ]; then VIRUSES="NC_009333.1"; fi
+  export VIRUSES
+  export MANIFEST="${PIPELINE_HOME}/config/samples.tsv"
 
   if [[ -z "$SING_CACHE_DIR" ]]; then
     if [[ -d "/data/$USER" ]]; then
@@ -656,11 +598,50 @@ function main(){
     fi
     echo "singularity cache dir (--singcache) is not set, using ${SING_CACHE_DIR}"
   fi
-  mkdir -p $SING_CACHE_DIR
-  EXPORT_SING_CACHE_DIR_CMD="export SINGULARITY_CACHEDIR=\"${SING_CACHE_DIR}\""
+  export EXPORT_SING_CACHE_DIR_CMD="export SINGULARITY_CACHEDIR=\"${SING_CACHE_DIR}\""
 
   # required files
-  CONFIGFILE="${WORKDIR}/config.yaml"
+  export CONFIGFILE="${WORKDIR}/config.yaml"
+
+  # decide trigger
+  export trigger="mtime"
+  # trigger="input"
+  # trigger="code"
+
+  # set variables based on the detected platform
+  if [ "$PLATFORM" == "biowulf" ]; then
+    CLUSTER_PROFILE="config/biowulf"
+    PARTITION="ccr,norm"
+    EXTRA_SINGULARITY_BINDS="/lscratch"
+    CONDA_ACTIVATE='. "/data/CCBR_Pipeliner/db/PipeDB/Conda/etc/profile.d/conda.sh" && conda activate py311'
+    MODULE_LOAD="module load python/$PYTHONVERSION snakemake/$SNAKEMAKEVERSION singularity; $CONDA_ACTIVATE"
+    TEMP_DIR='/lscratch/$SLURM_JOB_ID/'
+    REFS_DIR="/gpfs/gsfs10/users/CCBR_Pipeliner/db/PipeDB/charlie/fastas_gtfs/"
+  elif [ "$PLATFORM" == "fnlcr" ]; then
+    CLUSTER_PROFILE="config/fnlcr"
+    PARTITION="norm"
+    EXTRA_SINGULARITY_BINDS="/scratch/local"
+    CONDA_ACTIVATE=". '/mnt/projects/CCBR-Pipelines/resources/miniconda3/etc/profile.d/conda.sh' && conda activate py311"
+    # make sure spooker is in the path
+    PATH_PREPEND='export PATH="/mnt/projects/CCBR-Pipelines/bin:$PATH"'
+    MODULE_LOAD="module load singularity; $PATH_PREPEND; $CONDA_ACTIVATE"
+    TEMP_DIR="/scratch/local/"
+    REFS_DIR="/mnt/projects/CCBR-Pipelines/db/charlie/fastas_gtfs/"
+  elif [ "$PLATFORM" == "eddie" ]; then
+    # TODO fill in other variables for eddie
+    CLUSTER_PROFILE="config/eddie"
+    PATH_PREPEND='export PATH="/home/ttakanob/py3.8_venv/bin/:$PATH"'
+    MODULE_LOAD="module load singularity; $PATH_PREPEND"
+    # python & snakemake are already in Taka's path in his bashrc
+    TEMP_DIR="/exports/eddie/scratch/$USER"
+  else
+    CLUSTER_PROFILE="config/unknown"
+    echo """WARNING: detected platform is $PLATFORM.
+        Please edit the files in $CLUSTER_PROFILE & config.yaml for compatibility with your computing environment.
+        Also, make sure Singularity, Snakemake $SNAKEMAKEVERSION, Python $PYTHONVERSION, and pandas are installed.
+      """
+  fi
+  export PLATFORM CLUSTER_PROFILE PARTITION EXTRA_SINGULARITY_BINDS CONDA_ACTIVATE MODULE_LOAD TEMP_DIR REFS_DIR
 
   # change group to Ziegelbauer_lab before doing anything
   if [ "$CHANGEGRP" == "1" ]; then change_grp "$allargs"; fi
@@ -670,11 +651,13 @@ function main(){
     dryrun) dryrun && exit 0;;
     unlock) unlock && exit 0;;
     run) runslurm && exit 0;;
+    slurm) runslurm && exit 0;; # same as run
+    qsub) runqsub && exit 0;;
     runlocal) runlocal && exit 0;;
+    local) runlocal && exit 0;;                  # hidden option
     reset) reset && exit 0;;
     touch) touch && exit 0;;
     dry) dryrun && exit 0;;                      # hidden option
-    local) runlocal && exit 0;;                  # hidden option
     reconfig) reconfig && exit 0;;               # hidden option for debugging
     printbinds) printbinds && exit 0;;           # hidden option
     help) usage && exit 0;;                      # print help

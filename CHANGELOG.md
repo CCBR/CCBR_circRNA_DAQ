@@ -1,5 +1,7 @@
 ## CHARLIE development version
 
+- Support Eddie (The University of Edinburgh's HPC cluster) with `--platform=eddie` and `--runmode=qsub`. (#136, @kelly-sovacool)
+
 ## CHARLIE 0.11.1
 
 - CHARLIE was falsely throwing a file permissions error for tempdir values containing bash variables. (#118, @kelly-sovacool)

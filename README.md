@@ -164,7 +164,8 @@ Required Arguments:
 2.  RUNMODE     : [Type: String] Valid options:
     * init      : initialize workdir
     * dryrun    : dry run snakemake to generate DAG
-    * run       : run with slurm
+    * run       : run by submitting the job with slurm
+    * qsub      : run by submitting the job with qsub
     * runlocal  : run without submitting to sbatch
     ADVANCED RUNMODES (use with caution!!)
     * unlock    : unlock WORKDIR if locked by snakemake NEVER UNLOCK WORKDIR WHERE PIPELINE IS CURRENTLY RUNNING!
@@ -172,6 +173,7 @@ Required Arguments:
     * reset     : DELETE workdir dir and re-init it (debugging option) EDITS TO ALL FILES IN WORKDIR WILL BE LOST!
     * printbinds: print singularity binds (paths)
     * local     : same as runlocal
+    * slurm     : same as run (run with slurm)
 
 Optional Arguments:
 
@@ -181,6 +183,7 @@ Optional Arguments:
 --viruses|-v    : supply comma-separated list of viruses at command line                                (--runmode=init only)
 --manifest|-s   : absolute path to samples.tsv. This will be copied to output folder                    (--runmode=init only)
 --changegrp|-z  : change group to "Ziegelbauer_lab" before running anything. Biowulf-only. Useful for correctly setting permissions.
+--platform      : set the HPC platform (biowulf, fnlcr, eddie). If not set, CHARLIE will try to detect the platform with `scontrol`.
 --help|-h       : print this help
 
 

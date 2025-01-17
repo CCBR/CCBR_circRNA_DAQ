@@ -1,14 +1,14 @@
 ## you probably need to change or comment/uncomment some of these
 #
 # The working dir... output will be in the results subfolder of the workdir
-workdir: "WORKDIR"
+workdir: "$WORKDIR"
 
 # temporary directory for intermediate files that are not saved
-tempdir: "TEMP_DIR"
+tempdir: "$TEMP_DIR"
 
 # tab delimited samples file ... should have the following 3 columns
 # sampleName	path_to_R1_fastq	path_to_R2_fastq
-samples: "WORKDIR/samples.tsv"
+samples: "$WORKDIR/samples.tsv"
 
 # Should the CLEAR pipeline be run? True or False WITHOUT quotes
 run_clear: True
@@ -26,7 +26,7 @@ run_circRNAFinder: True
 # Should the NCLscan pipeline be run? True or False WITHOUT quotes
 # This can only be run for PE data
 run_nclscan: False
-nclscan_config: "WORKDIR/nclscan.config"
+nclscan_config: "$WORKDIR/nclscan.config"
 
 # Should we also run find_circ? True or False WITHOUT quotes
 run_findcirc: False
@@ -38,9 +38,9 @@ findcirc_params: "--noncanonical"
 # host:       "hg38"
 # additives:  "ERCC" # options are ERCC and BAC16Insert
 # viruses:    "NC_009333.1"
-host: "HOST"
-additives: "ADDITIVES"
-viruses: "VIRUSES"
+host: "$HOST"
+additives: "$ADDITIVES"
+viruses: "$VIRUSES"
 # select viruses and other (ERCC/BAC): options are
 # ERCC
 # BAC16Insert
@@ -85,14 +85,13 @@ maxsize_host: 1000000000
 maxsize_virus: 5000
 
 ## you most probably dont need to change these
-scriptsdir: "PIPELINE_HOME/workflow/scripts"
-resourcesdir: "PIPELINE_HOME/resources"
+scriptsdir: "$PIPELINE_HOME/workflow/scripts"
+resourcesdir: "$PIPELINE_HOME/resources"
 
-# default cluster
-# cluster: "PIPELINE_HOME/resources/cluster.json"
-cluster: "WORKDIR/CLUSTER_PROFILE/cluster.json"
+# default cluster config file
+cluster: "$WORKDIR/$CLUSTER_PROFILE/cluster.yaml"
 
-adapters: "PIPELINE_HOME/resources/TruSeq_and_nextera_adapters.consolidated.fa"
+adapters: "$PIPELINE_HOME/resources/TruSeq_and_nextera_adapters.consolidated.fa"
 circexplorer_bsj_circRNA_min_reads: 3 # in addition to "known" and "low-conf" circRNAs identified by circexplorer, we also include those found in back_spliced.bed file but not classified as known/low-conf only if the number of reads supporting the BSJ call is greater than this number
 minreadcount: 3 # this is used to filter circRNAs while creating the per-sample counts table
 flanksize: 18 # 18bp flank on either side of the BSJ .. used by multiple BSJ callers
@@ -107,11 +106,11 @@ high_confidence_core_callers_plus_n: 1
 
 ciri_perl_script: "/opt2/CIRI_v2.0.6/CIRI2.pl" # path in docker container
 # change this path to a directory containing fasta and GTF files for all host and virus genomes
-fastas_gtfs_dir: "REFS_DIR"
+fastas_gtfs_dir: "$REFS_DIR"
 
 annotation_lookups:
-  hg38: "PIPELINE_HOME/resources/hg38_2_hg19_lookup.txt"
-  mm39: "PIPELINE_HOME/resources/mm39_circBase_annotation_lookup.txt"
+  hg38: "$PIPELINE_HOME/resources/hg38_2_hg19_lookup.txt"
+  mm39: "$PIPELINE_HOME/resources/mm39_circBase_annotation_lookup.txt"
 
 containers:
   base: "docker://nciccbr/ccbr_ubuntu_base_20.04:v7"

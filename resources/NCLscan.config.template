@@ -7,22 +7,22 @@ NCLscan_dir = /opt2/NCLscan-1.7.0
 
 ## The directory of references and indices
 ## The script "create_reference.py" would create the needed references and indices here.
-NCLscan_ref_dir = WORKDIR/ref/NCLscan_index
+NCLscan_ref_dir = $WORKDIR/ref/NCLscan_index
 
 
 ## The following four reference files can be downloaded from the GENCODE website (http://www.gencodegenes.org/).
 
 ## The reference genome sequence, eg. /path/to/GRCh37.p13.genome.fa
-Reference_genome = WORKDIR/ref/ref.fa
+Reference_genome = $WORKDIR/ref/ref.fa
 
 ## The gene annotation file, eg. /path/to/gencode.v19.annotation.gtf
-Gene_annotation = WORKDIR/ref/ref.fixed.gtf
+Gene_annotation = $WORKDIR/ref/ref.fixed.gtf
 
 ## The protein-coding transcript sequences, eg. /path/to/gencode.v19.pc_transcripts.fa
-Protein_coding_transcripts = WORKDIR/ref/ref.transcripts.fa
+Protein_coding_transcripts = $WORKDIR/ref/ref.transcripts.fa
 
 ## The long non-coding RNA transcript sequences, eg. /path/to/gencode.v19.lncRNA_transcripts.fa
-lncRNA_transcripts = WORKDIR/ref/ref.dummy.fa
+lncRNA_transcripts = $WORKDIR/ref/ref.dummy.fa
 
 
 ## External tools
@@ -68,7 +68,7 @@ SeqOut_bin              = {NCLscan_bin}/SeqOut
 ### Advanced parameters ###
 ###########################
 
-## The following two parameters indicate the maximal read length (L) and fragment size of the used paired-end RNA-seq data (FASTQ files), where fragment size = 2L + insert size. 
+## The following two parameters indicate the maximal read length (L) and fragment size of the used paired-end RNA-seq data (FASTQ files), where fragment size = 2L + insert size.
 ## If L > 151, the users should change these two parameters to (L, 2L + insert size).
 max_read_len      = 151
 max_fragment_size = 500
@@ -96,6 +96,3 @@ bwa-mem-t = 56
 ## NOTE: The memory usage of each blat process would be up to 4 GB!
 ##
 mp_blat_process = 56
-
-
-

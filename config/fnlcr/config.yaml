@@ -7,8 +7,7 @@ cluster: sbatch
   --job-name {cluster.name}
   --output {cluster.output}
   --error {cluster.error}
-  --gres {cluster.gres}
-cluster-config: "cluster.json"
+cluster-config: "cluster.yaml"
 cluster-status: "cluster_status.sh"
 jobs: 499
 immediate-submit: false
